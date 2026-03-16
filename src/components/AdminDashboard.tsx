@@ -21,30 +21,42 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
+import { supabase } from '../lib/supabase';
+
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = React.useState('utilizadores');
   const [userSubTab, setUserSubTab] = React.useState(0);
   const [isAddUserModalOpen, setIsAddUserModalOpen] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(true);
 
-  const [users, setUsers] = React.useState([
-    { id: 'JS', name: 'João Silva', email: 'joao.silva@logpro.pt', role: 'Admin Total', date: '12/01/2024', status: 'Ativo' },
-    { id: 'MS', name: 'Maria Santos', email: 'm.santos@logpro.pt', role: 'Operador Inventário', date: '05/02/2024', status: 'Ativo' },
-    { id: 'RP', name: 'Ricardo Pereira', email: 'r.pereira@logpro.pt', role: 'Visualizador Frota', date: '20/02/2024', status: 'Inativo' }
-  ]);
+  const [users, setUsers] = React.useState<any[]>([]);
+  const [fleet, setFleet] = React.useState<any[]>([]);
+  const [inventory, setInventory] = React.useState<any[]>([]);
 
-  const [fleet] = React.useState([
-    { id: 'V-001', model: 'Scania R450', plate: 'AA-11-BB', driver: 'António Costa', status: 'Em Rota', location: 'A1 - Aveiro' },
-    { id: 'V-002', model: 'Volvo FH16', plate: 'CC-22-DD', driver: 'Carlos Sousa', status: 'Disponível', location: 'Armazém Central' },
-    { id: 'V-003', model: 'Mercedes Actros', plate: 'EE-33-FF', driver: 'Nuno Dias', status: 'Manutenção', location: 'Oficina Sines' }
-  ]);
+  React.useEffect(() => {
+    fetchData();
+  }, []);
 
-  const [inventory] = React.useState([
-    { id: 'SKU-772', name: 'Contentor Dry 20ft', qty: 15, unit: 'Un', min: 5, category: 'Equipamento' },
-    { id: 'SKU-910', name: 'Paletes EPAL', qty: 450, unit: 'Un', min: 100, category: 'Consumíveis' },
-    { id: 'SKU-441', name: 'Sacos Proteção', qty: 1200, unit: 'Un', min: 200, category: 'Embalagem' }
-  ]);
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const [usersRes, fleetRes, inventoryRes] = await Promise.all([
+        supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+        supabase.from('fleet').select('*').order('created_at', { ascending: false }),
+        supabase.from('inventory').select('*').order('created_at', { ascending: false })
+      ]);
 
-  const handleAddUser = (e: React.FormEvent<HTMLFormElement>) => {
+      if (usersRes.data) setUsers(usersRes.data);
+      if (fleetRes.data) setFleet(fleetRes.data);
+      if (inventoryRes.data) setInventory(inventoryRes.data);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAddUser = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const name = formData.get('name') as string;
@@ -54,20 +66,32 @@ export default function AdminDashboard() {
     const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
     
     const newUser = {
-      id: initials,
       name,
       email,
       role,
-      date: new Date().toLocaleDateString('pt-PT'),
       status: 'Ativo'
     };
 
-    setUsers([newUser, ...users]);
+    const { data, error } = await supabase.from('profiles').insert([newUser]).select();
+
+    if (error) {
+      console.error('Error adding user:', error);
+      return;
+    }
+
+    if (data) {
+      setUsers([data[0], ...users]);
+    }
     setIsAddUserModalOpen(false);
   };
 
-  const handleDeleteUser = (email: string) => {
-    setUsers(users.filter(u => u.email !== email));
+  const handleDeleteUser = async (id: string) => {
+    const { error } = await supabase.from('profiles').delete().eq('id', id);
+    if (error) {
+      console.error('Error deleting user:', error);
+      return;
+    }
+    setUsers(users.filter(u => u.id !== id));
   };
 
   const renderContent = () => {
@@ -147,7 +171,7 @@ export default function AdminDashboard() {
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">
-                                {user.id}
+                                {user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
                               </div>
                               <span className="font-semibold">{user.name}</span>
                             </div>
@@ -158,7 +182,7 @@ export default function AdminDashboard() {
                               {user.role}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-slate-500 text-sm">{user.date}</td>
+                          <td className="px-6 py-4 text-slate-500 text-sm">{new Date(user.created_at).toLocaleDateString('pt-PT')}</td>
                           <td className="px-6 py-4">
                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${user.status === 'Ativo' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
                               <span className={`w-1.5 h-1.5 rounded-full ${user.status === 'Ativo' ? 'bg-green-600' : 'bg-slate-400'}`}></span>
@@ -171,7 +195,7 @@ export default function AdminDashboard() {
                                 <Edit2 className="w-4 h-4" />
                               </button>
                               <button 
-                                onClick={() => handleDeleteUser(user.email)}
+                                onClick={() => handleDeleteUser(user.id)}
                                 className="p-2 text-slate-400 hover:text-red-500 transition-colors"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -354,8 +378,8 @@ export default function AdminDashboard() {
                       <td className="px-6 py-4">
                         <div className="w-full bg-slate-100 rounded-full h-2 max-w-[100px]">
                           <div 
-                            className={`h-2 rounded-full ${item.qty <= item.min ? 'bg-red-500' : 'bg-green-500'}`}
-                            style={{ width: `${Math.min((item.qty / (item.min * 2)) * 100, 100)}%` }}
+                            className={`h-2 rounded-full ${item.qty <= item.min_qty ? 'bg-red-500' : 'bg-green-500'}`}
+                            style={{ width: `${Math.min((item.qty / (item.min_qty * 2)) * 100, 100)}%` }}
                           ></div>
                         </div>
                       </td>
@@ -460,7 +484,11 @@ export default function AdminDashboard() {
         </header>
 
         <main className="flex-1 overflow-y-auto p-6 lg:p-10 max-w-[1400px] mx-auto w-full">
-          {renderContent()}
+          {isLoading ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            </div>
+          ) : renderContent()}
         </main>
         
         <footer className="bg-white border-t border-slate-200 px-10 py-4 text-center">

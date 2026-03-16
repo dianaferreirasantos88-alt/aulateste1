@@ -2,8 +2,52 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X } from 'lucide-react';
 
+import { supabase } from '../lib/supabase';
+
 export default function LoginModal({ isOpen, onClose, onSuccess }: { isOpen: boolean, onClose: () => void, onSuccess: () => void }) {
+  const [isLogin, setIsLogin] = React.useState(true);
+  const [name, setName] = React.useState('');
+  const [email, setEmail] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
   if (!isOpen) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      if (isLogin) {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              name: name,
+            },
+          },
+        });
+        if (error) throw error;
+        alert('Conta criada com sucesso! Verifique o seu e-mail para confirmar a conta.');
+        setIsLogin(true);
+        return;
+      }
+      onSuccess();
+    } catch (err: any) {
+      setError(err.message || 'Ocorreu um erro. Verifique os seus dados.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -26,12 +70,40 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: { isOpen: boo
           </button>
           
           <div className="flex border-b border-slate-200">
-            <button className="flex-1 py-4 text-sm font-bold border-b-2 border-primary text-primary bg-white">Entrar</button>
-            <button className="flex-1 py-4 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-primary">Registo</button>
+            <button 
+              onClick={() => setIsLogin(true)}
+              className={`flex-1 py-4 text-sm font-bold border-b-2 transition-colors ${isLogin ? 'border-primary text-primary bg-white' : 'border-transparent text-slate-500 hover:text-primary'}`}
+            >
+              Entrar
+            </button>
+            <button 
+              onClick={() => setIsLogin(false)}
+              className={`flex-1 py-4 text-sm font-bold border-b-2 transition-colors ${!isLogin ? 'border-primary text-primary bg-white' : 'border-transparent text-slate-500 hover:text-primary'}`}
+            >
+              Registo
+            </button>
           </div>
           
           <div className="p-8">
-            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); onSuccess(); }}>
+            <form className="space-y-4" onSubmit={handleSubmit}>
+              {error && (
+                <div className="p-3 rounded-lg bg-red-50 text-red-600 text-sm font-medium border border-red-100">
+                  {error}
+                </div>
+              )}
+              {!isLogin && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Nome Completo</label>
+                  <input 
+                    className="w-full rounded-lg border-slate-300 focus:ring-primary focus:border-primary p-3" 
+                    placeholder="O seu nome" 
+                    type="text"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">E-mail Corporativo</label>
                 <input 
@@ -39,6 +111,8 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: { isOpen: boo
                   placeholder="nome@empresa.com" 
                   type="email"
                   required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
               <div>
@@ -48,10 +122,18 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: { isOpen: boo
                   placeholder="••••••••" 
                   type="password"
                   required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
-              <button className="w-full bg-primary text-white font-bold py-3 rounded-lg hover:bg-primary/90 transition-colors">
-                Aceder ao Painel
+              <button 
+                disabled={isLoading}
+                className="w-full bg-primary text-white font-bold py-3 rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : null}
+                {isLoading ? (isLogin ? 'A entrar...' : 'A criar conta...') : (isLogin ? 'Aceder ao Painel' : 'Criar Conta')}
               </button>
               
               <div className="relative py-4">
